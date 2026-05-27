@@ -1,4 +1,5 @@
 import { CosmosClient, Container, Database } from '@azure/cosmos';
+import { DefaultAzureCredential } from '@azure/identity';
 import type {
   User, Security, Transaction, Dividend, PriceSeries,
 } from '../types.js';
@@ -9,7 +10,8 @@ import type {
 
 interface CosmosConfig {
   endpoint: string;
-  key: string;
+  /** Optional. When empty, the client authenticates via DefaultAzureCredential (managed identity in Azure, az/VS Code login locally). */
+  key?: string;
   database: string;
 }
 
@@ -41,7 +43,18 @@ export class CosmosRepository implements Repository {
   private containers!: Containers;
 
   constructor(private readonly cfg: CosmosConfig) {
-    this.client = new CosmosClient({ endpoint: cfg.endpoint, key: cfg.key });
+    if (cfg.key && cfg.key.trim() !== '') {
+      // Local development / Cosmos emulator: key-based auth.
+      this.client = new CosmosClient({ endpoint: cfg.endpoint, key: cfg.key });
+    } else {
+      // Production / cloud: AAD via the App Service's managed identity.
+      // Requires the "Cosmos DB Built-in Data Contributor" SQL role assignment
+      // on the target account (see infra/main.bicep).
+      this.client = new CosmosClient({
+        endpoint: cfg.endpoint,
+        aadCredentials: new DefaultAzureCredential(),
+      });
+    }
   }
 
   async init() {

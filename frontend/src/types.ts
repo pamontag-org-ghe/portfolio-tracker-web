@@ -24,6 +24,18 @@ export interface Holding {
   unrealizedPnLPct?: number;
   realizedPnL: number;
   dividendsTotal: number;
+  /** Range-scoped P/L in EUR. Present when the dashboard requested holdings for a specific time range. */
+  rangePnL?: number;
+  /** Range P/L expressed as a percentage of capital exposed (startValue + buys during range). */
+  rangePnLPct?: number;
+  /** EUR value of the position at the beginning of the requested range. */
+  rangeStartValue?: number;
+  /** Sum of buys (cost incl. fees) during the requested range, in EUR. */
+  rangeBuys?: number;
+  /** Sum of sell proceeds (net of fees and taxes) during the requested range, in EUR. */
+  rangeSells?: number;
+  /** Dividends paid during the requested range, in EUR. */
+  rangeDividends?: number;
 }
 
 export interface FxRatesResponse {

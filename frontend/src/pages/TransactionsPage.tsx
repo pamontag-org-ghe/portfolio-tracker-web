@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, apiErrorMessage } from '../api/client';
 import type { Transaction, AssetCategory, Dividend } from '../types';
-import { formatDate, formatMoney } from '../utils/format';
+import { formatDate, formatMoneyDetail } from '../utils/format';
 
 type Activity = {
   id: string;
@@ -274,9 +274,9 @@ export default function TransactionsPage() {
                     <span className={`text-xs px-1.5 py-0.5 rounded ${typeBadgeClass(a.type)}`}>{a.type}</span>
                   </td>
                   <td className="py-1.5 pr-3 text-right">{a.shares ?? '—'}</td>
-                  <td className="py-1.5 pr-3 text-right">{formatMoney(a.grossEur)}</td>
-                  <td className="py-1.5 pr-3 text-right">{a.fees ? a.fees.toFixed(2) : '—'}</td>
-                  <td className="py-1.5 pr-3 text-right">{a.taxes ? a.taxes.toFixed(2) : '—'}</td>
+                  <td className="py-1.5 pr-3 text-right">{formatMoneyDetail(a.grossEur)}</td>
+                  <td className="py-1.5 pr-3 text-right">{a.fees ? formatMoneyDetail(a.fees) : '—'}</td>
+                  <td className="py-1.5 pr-3 text-right">{a.taxes ? formatMoneyDetail(a.taxes) : '—'}</td>
                   <td className="py-1.5 pr-3 text-right">
                     <button className="text-red-600 text-xs hover:underline" onClick={() => del(a)}>Delete</button>
                   </td>

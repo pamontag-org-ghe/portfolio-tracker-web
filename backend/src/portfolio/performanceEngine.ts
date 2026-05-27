@@ -120,7 +120,7 @@ export class PerformanceEngine {
     return s.points.length > 0 ? s : null;
   }
 
-  async computeHoldings(userId: string): Promise<{
+  async computeHoldings(userId: string, range?: TimeRange): Promise<{
     holdings: Holding[];
     transactions: Transaction[];
     dividends: Dividend[];
@@ -157,6 +157,16 @@ export class PerformanceEngine {
       return (d) => lookup(d) ?? 1;
     }
 
+    // Pre-compute the range start date once (relative to today and the user's first
+    // transaction). Each holding clamps this further to its own first transaction.
+    const today = new Date(isoToday());
+    const allFirstTxIso = transactions.length > 0
+      ? transactions.reduce((min, t) => t.date < min ? t.date : min, transactions[0].date)
+      : undefined;
+    const rangeStartIso = range && allFirstTxIso
+      ? toIsoDate(rangeStart(range, today, new Date(allFirstTxIso)))
+      : null;
+
     const holdings: Holding[] = [];
     for (const [secId, txs] of bySec) {
       const sec = securities.get(secId);
@@ -166,14 +176,31 @@ export class PerformanceEngine {
       let costBasisLocal = 0;   // running cost basis in security currency
       let costBasisEur = 0;
       let realizedPnL = 0;
+
+      // Range accumulators: snapshot shares/cost at the moment the first in-range
+      // transaction is encountered, and sum buys/sells/realized P/L that happen
+      // during the requested window. When no range was requested these stay zero
+      // and we leave the optional fields off the resulting Holding.
+      let sharesAtRangeStart: number | null = null;
+      let costEurAtRangeStart: number | null = null;
+      let buysInRangeEur = 0;
+      let sellsInRangeEur = 0;
+
       const fxToEur = await fxLookupFor(sec.currency, this);
       for (const t of sortedTx) {
+        // Freeze the "before range" snapshot the first time we cross into the range.
+        if (rangeStartIso !== null && sharesAtRangeStart === null && t.date >= rangeStartIso) {
+          sharesAtRangeStart = shares;
+          costEurAtRangeStart = costBasisEur;
+        }
         const fx = t.exchangeRate || fxToEur(t.date) || 1;
+        const inRange = rangeStartIso !== null && t.date >= rangeStartIso;
         if (t.type === 'BUY') {
           shares += t.shares;
           const totalCost = t.grossAmount + t.fees;
           costBasisLocal += totalCost;
           costBasisEur += totalCost * fx;
+          if (inRange) buysInRangeEur += totalCost * fx;
         } else {
           // sell - average cost method
           const avg = shares > 0 ? costBasisLocal / shares : 0;
@@ -185,7 +212,25 @@ export class PerformanceEngine {
           shares -= t.shares;
           costBasisLocal = Math.max(0, costBasisLocal - soldCostLocal);
           costBasisEur = Math.max(0, costBasisEur - soldCostEur);
+          if (inRange) sellsInRangeEur += proceedsEur;
         }
+      }
+      // If all transactions for this security happened before the range started,
+      // the snapshot was never frozen — capture the final state now.
+      if (rangeStartIso !== null && sharesAtRangeStart === null) {
+        sharesAtRangeStart = shares;
+        costEurAtRangeStart = costBasisEur;
+      }
+
+      // Fetch the price series once and reuse for both current price and range
+      // start price. Cached at the market layer so this is cheap on warm calls.
+      let priceLookup: (date: string) => number | undefined = () => undefined;
+      const needPrice = shares > 0 || (rangeStartIso !== null && (sharesAtRangeStart ?? 0) > 0);
+      if (needPrice) {
+        try {
+          const series = await this.fetchSecuritySeries(sec);
+          if (series) priceLookup = MarketDataService.toLookup(series);
+        } catch { /* ignore — leave priceLookup as no-op */ }
       }
 
       let currentPrice: number | undefined;
@@ -193,20 +238,45 @@ export class PerformanceEngine {
       let currentValueLocal: number | undefined;
       let fxRate: number | undefined;
       if (shares > 0) {
-        try {
-          const series = await this.fetchSecuritySeries(sec);
-          if (series) {
-            const lookup = MarketDataService.toLookup(series);
-            const todayPrice = lookup(isoToday());
-            if (todayPrice !== undefined) {
-              currentPrice = todayPrice;
-              const fx = fxToEur(isoToday()) || 1;
-              fxRate = fx;
-              currentValueLocal = this.valuePerShare(todayPrice, sec) * shares;
-              currentValue = currentValueLocal * fx;
-            }
+        const todayPrice = priceLookup(isoToday());
+        if (todayPrice !== undefined) {
+          currentPrice = todayPrice;
+          const fx = fxToEur(isoToday()) || 1;
+          fxRate = fx;
+          currentValueLocal = this.valuePerShare(todayPrice, sec) * shares;
+          currentValue = currentValueLocal * fx;
+        }
+      }
+
+      // Range-scoped P/L computation. We only emit the fields when a range was
+      // requested AND we managed to value the starting position (or it was empty).
+      let rangePnL: number | undefined;
+      let rangePnLPct: number | undefined;
+      let rangeStartValueEur: number | undefined;
+      let dividendsInRange = 0;
+      if (rangeStartIso !== null) {
+        for (const d of dividends) {
+          if (d.securityId !== secId) continue;
+          if (d.date >= rangeStartIso) dividendsInRange += d.amount;
+        }
+        const startShares = sharesAtRangeStart ?? 0;
+        if (startShares <= 0) {
+          rangeStartValueEur = 0;
+        } else {
+          const startPrice = priceLookup(rangeStartIso);
+          if (startPrice !== undefined) {
+            const fxAtStart = fxToEur(rangeStartIso) || 1;
+            rangeStartValueEur = this.valuePerShare(startPrice, sec) * startShares * fxAtStart;
+          } else {
+            // No market quote at range start: fall back to cost basis snapshot so
+            // we can still surface a reasonable P/L instead of hiding the field.
+            rangeStartValueEur = costEurAtRangeStart ?? 0;
           }
-        } catch { /* ignore */ }
+        }
+        const endValueEur = currentValue ?? 0;
+        rangePnL = endValueEur + sellsInRangeEur + dividendsInRange - rangeStartValueEur - buysInRangeEur;
+        const denom = rangeStartValueEur + buysInRangeEur;
+        rangePnLPct = denom > 0 ? rangePnL / denom : undefined;
       }
 
       holdings.push({
@@ -233,6 +303,12 @@ export class PerformanceEngine {
           ? (currentValue - costBasisEur) / costBasisEur : undefined,
         realizedPnL,
         dividendsTotal: divBySec.get(sec.id) ?? 0,
+        rangePnL,
+        rangePnLPct,
+        rangeStartValue: rangeStartValueEur,
+        rangeBuys: rangeStartIso !== null ? buysInRangeEur : undefined,
+        rangeSells: rangeStartIso !== null ? sellsInRangeEur : undefined,
+        rangeDividends: rangeStartIso !== null ? dividendsInRange : undefined,
       });
     }
 

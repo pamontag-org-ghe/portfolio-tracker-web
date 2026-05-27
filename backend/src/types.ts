@@ -143,5 +143,21 @@ export interface Holding {
   unrealizedPnLPct?: number;
   realizedPnL: number;
   dividendsTotal: number;
+  /**
+   * Profit/loss attributable to a requested time range (set only when the caller
+   * asks for range-aware holdings, e.g. via `?range=YTD`). Computed as:
+   *   endValueEur + sellsInRangeEur + dividendsInRangeEur - startValueEur - buysInRangeEur
+   */
+  rangePnL?: number;
+  /** Range P/L expressed as a percentage of capital exposed (startValue + buys during range). */
+  rangePnLPct?: number;
+  /** EUR value of the position at the beginning of the requested range. */
+  rangeStartValue?: number;
+  /** Sum of buys (cost incl. fees) during the requested range, in EUR. */
+  rangeBuys?: number;
+  /** Sum of sell proceeds (net of fees and taxes) during the requested range, in EUR. */
+  rangeSells?: number;
+  /** Dividends paid during the requested range, in EUR. */
+  rangeDividends?: number;
 }
 

@@ -39,6 +39,17 @@ export default function DashboardPage() {
     return () => { alive = false; };
   }, []);
 
+  // Re-fetch holdings whenever the selected time range changes so that the
+  // per-holding P/L column reflects the chosen window. The very first ALL
+  // load happens in the effect above, this only fires on subsequent changes.
+  useEffect(() => {
+    let alive = true;
+    api.get<{ holdings: Holding[] }>('/portfolio/holdings', { params: { range } })
+      .then((h) => { if (alive) setHoldings(h.data.holdings); })
+      .catch(() => { /* keep previous holdings on transient failure */ });
+    return () => { alive = false; };
+  }, [range]);
+
   if (loading) return <div className="text-center py-10">Loading portfolio…</div>;
   if (error) return <div className="card text-red-600">Error: {error}</div>;
   if (!perf || !holdings) return null;
@@ -168,7 +179,9 @@ export default function DashboardPage() {
               <th className="py-2 pr-3 text-right">Price</th>
               <th className="py-2 pr-3 text-right">Value (local)</th>
               <th className="py-2 pr-3 text-right">Value (€)</th>
-              <th className="py-2 pr-3 text-right">P/L</th>
+              <th className="py-2 pr-3 text-right">
+                {range === 'ALL' ? 'P/L' : `P/L (${range})`}
+              </th>
               <th className="py-2 pr-3 text-right">Dividends</th>
             </tr>
           </thead>
@@ -179,6 +192,12 @@ export default function DashboardPage() {
               const localFmt = (v: number) => new Intl.NumberFormat('en-US', {
                 style: 'currency', currency: isPct ? 'EUR' : h.currency, maximumFractionDigits: 0,
               }).format(v);
+              // When a non-ALL range is selected and the backend returned a range P/L,
+              // show that instead of the lifetime unrealized P/L so the column matches
+              // the range selector. The ALL case keeps the original cost-basis view.
+              const showRangePnL = range !== 'ALL' && h.rangePnL !== undefined;
+              const pnlValue = showRangePnL ? h.rangePnL : h.unrealizedPnL;
+              const pnlPct = showRangePnL ? h.rangePnLPct : h.unrealizedPnLPct;
               return (
                 <tr key={h.securityId} className="border-b border-slate-100 dark:border-slate-700/50">
                   <td className="py-1.5 pr-3">
@@ -198,11 +217,13 @@ export default function DashboardPage() {
                     ) : '—'}
                   </td>
                   <td className="py-1.5 pr-3 text-right">{h.currentValue !== undefined ? formatMoney(h.currentValue) : '—'}</td>
-                  <td className={`py-1.5 pr-3 text-right ${colorForReturn(h.unrealizedPnL ?? 0)}`}>
-                    {h.unrealizedPnL !== undefined ? (
+                  <td className={`py-1.5 pr-3 text-right ${colorForReturn(pnlValue ?? 0)}`}>
+                    {pnlValue !== undefined ? (
                       <>
-                        {formatMoney(h.unrealizedPnL)}
-                        <span className="text-xs ml-1">({formatPct(h.unrealizedPnLPct ?? 0)})</span>
+                        {formatMoney(pnlValue)}
+                        {pnlPct !== undefined && (
+                          <span className="text-xs ml-1">({formatPct(pnlPct)})</span>
+                        )}
                       </>
                     ) : '—'}
                   </td>

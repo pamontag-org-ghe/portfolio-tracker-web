@@ -30,7 +30,12 @@ portfolioRouter.post('/import', upload.single('file'), async (req: Authenticated
 portfolioRouter.get('/holdings', async (req: AuthenticatedRequest, res, next) => {
   try {
     const engine = new PerformanceEngine(getRepository());
-    const { holdings } = await engine.computeHoldings(req.userId!);
+    const validRanges = ['1D', '1W', '1M', 'YTD', '1Y', '3Y', '5Y', 'ALL'] as const;
+    const rawRange = typeof req.query.range === 'string' ? req.query.range : undefined;
+    const range = rawRange && (validRanges as readonly string[]).includes(rawRange)
+      ? rawRange as typeof validRanges[number]
+      : undefined;
+    const { holdings } = await engine.computeHoldings(req.userId!, range);
     res.json({ holdings });
   } catch (err) { next(err); }
 });

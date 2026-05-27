@@ -1,3 +1,6 @@
+// Telemetry must be the *first* import so the Application Insights SDK can
+// patch Node's module loader before HTTP / Cosmos / Express are required.
+import './telemetry.js';
 import { createApp } from './app.js';
 import { config } from './config.js';
 

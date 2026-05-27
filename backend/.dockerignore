@@ -1,0 +1,11 @@
+node_modules
+.data
+.cache
+dist
+*.log
+.env
+.env.*
+*.tsbuildinfo
+.vscode
+.idea
+.git

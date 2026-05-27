@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import {
   ComposedChart, Area, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend,
+  type TooltipProps,
 } from 'recharts';
 import type { PerformancePoint, TimeRange } from '../types';
-import { formatMoney } from '../utils/format';
+import { colorForReturn, formatMoney, formatPct } from '../utils/format';
 
 interface Props {
   series: PerformancePoint[];
@@ -54,6 +55,50 @@ export default function PortfolioChart({ series, range }: Props) {
     return [Math.max(0, min - pad), max + pad];
   }, [filtered]);
 
+  // Baseline TWR indices at the start of the visible window. Used to compute
+  // range-relative yield % for the tooltip hover.
+  const basePortfolioTwr = filtered[0]?.portfolioTwrIndex ?? 1;
+  const baseBenchmarkTwr = filtered[0]?.benchmarkTwrIndex ?? 1;
+
+  const renderTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+    if (!active || !payload || payload.length === 0) return null;
+    const point = payload[0].payload as PerformancePoint;
+    const portfolioYield = basePortfolioTwr > 0
+      ? point.portfolioTwrIndex / basePortfolioTwr - 1
+      : 0;
+    const benchmarkYield = baseBenchmarkTwr > 0
+      ? point.benchmarkTwrIndex / baseBenchmarkTwr - 1
+      : 0;
+    const spread = portfolioYield - benchmarkYield;
+    return (
+      <div className="rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-lg px-3 py-2 text-xs">
+        <div className="font-medium mb-1">{label as string}</div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-slate-500">Portfolio</span>
+          <span className="tabular-nums">
+            {formatMoney(point.portfolioValue)}
+            <span className={`ml-2 ${colorForReturn(portfolioYield)}`}>{formatPct(portfolioYield)}</span>
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-slate-500">S&amp;P 500</span>
+          <span className="tabular-nums">
+            {formatMoney(point.benchmarkValue)}
+            <span className={`ml-2 ${colorForReturn(benchmarkYield)}`}>{formatPct(benchmarkYield)}</span>
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-slate-500">Invested</span>
+          <span className="tabular-nums">{formatMoney(point.invested)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 mt-1 pt-1 border-t border-slate-200 dark:border-slate-600">
+          <span className="text-slate-500">Spread</span>
+          <span className={`tabular-nums ${colorForReturn(spread)}`}>{formatPct(spread)}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="card">
       <div className="flex items-baseline justify-between mb-2">
@@ -78,10 +123,7 @@ export default function PortfolioChart({ series, range }: Props) {
               domain={yDomain}
               allowDataOverflow={false}
             />
-            <Tooltip
-              labelFormatter={(label) => label as string}
-              formatter={(value: number, name) => [formatMoney(value), name]}
-            />
+            <Tooltip content={renderTooltip} />
             <Legend />
             <Area
               type="monotone"

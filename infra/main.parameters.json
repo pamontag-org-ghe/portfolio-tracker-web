@@ -6,6 +6,9 @@
       "value": "portfoliotracker"
     },
     "location": {
+      "value": "italynorth"
+    },
+    "staticWebAppLocation": {
       "value": "westeurope"
     },
     "jwtSecret": {

@@ -8,9 +8,11 @@ let repository: Repository | null = null;
 export async function initRepository(): Promise<Repository> {
   if (repository) return repository;
   if (config.storageDriver === 'cosmos') {
-    if (!config.cosmos.endpoint || !config.cosmos.key) {
-      throw new Error('COSMOS_ENDPOINT and COSMOS_KEY required when STORAGE_DRIVER=cosmos');
+    if (!config.cosmos.endpoint) {
+      throw new Error('COSMOS_ENDPOINT is required when STORAGE_DRIVER=cosmos');
     }
+    // COSMOS_KEY is optional: when unset the client falls back to
+    // DefaultAzureCredential (managed identity in Azure / az login locally).
     repository = new CosmosRepository(config.cosmos);
   } else {
     repository = new LocalRepository(config.dataDir);

@@ -20,7 +20,11 @@ import type { PricePoint, PriceSeries } from '../types.js';
 import type { Repository } from '../data/repository.js';
 
 const SOURCE_PAGE = 'https://www.simpletoolsforinvestors.eu/documentivari.php';
-const KNOWN_HISTORICAL_URL = 'https://www.simpletoolsforinvestors.eu/data/export/B99E31375ED5E5EF808779BB1A101C46.csv.zip';
+// Historical fallback URL — the site rotates this filename periodically (it's a
+// content hash of the day's build), so we always try to scrape the current one
+// from the documents page first. The fallback is only used if the page is
+// unreachable; if both fail we let the error bubble up so callers can see it.
+const KNOWN_HISTORICAL_URL_FALLBACK = 'https://www.simpletoolsforinvestors.eu/data/export/A7D5EA3ABAF9EB17CD40B09B5A8A5680.csv.zip';
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -55,17 +59,36 @@ async function isCacheFresh(): Promise<boolean> {
 }
 
 async function findHistoricalCsvUrl(): Promise<string> {
+  // The page lists download links in a table. The relevant row looks like:
+  //   <tr>
+  //     <td>Archivio con lo storico prezzi dei titoli in formato CSV(Ultimo aggiornamento: dd/MM/yyyy)</td>
+  //     <td><a href='data/export/XXXXXXXX.csv.zip'>Link</a></td>
+  //   </tr>
+  // Notes vs. older versions of the markup:
+  //   * the description text and the href live in two *separate* <td> cells;
+  //   * the href uses single quotes (the site emits `href='...'`, not `href="..."`).
+  // We anchor on the description text inside one cell, then non-greedily jump
+  // to the next href in the same row. The {0,400} bound keeps us within the
+  // same table row.
   try {
     const res = await fetch(SOURCE_PAGE, { headers: { 'User-Agent': USER_AGENT } });
     if (res.ok) {
       const html = await res.text();
-      const match = html.match(/href="(data\/export\/[A-F0-9]+\.csv\.zip)"[^>]*>[^<]*[Aa]rchivio/);
+      const match = html.match(
+        /[Aa]rchivio[^<]*storico[^<]*prezzi[\s\S]{0,400}?href=['"]([^'"]*data\/export\/[A-Fa-f0-9]+\.csv\.zip)['"]/
+      );
       if (match) return new URL(match[1], SOURCE_PAGE).toString();
+      // eslint-disable-next-line no-console
+      console.warn('[bondData] could not locate historical archive link on documents page; falling back to last known URL');
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(`[bondData] documents page returned HTTP ${res.status}; falling back to last known URL`);
     }
-  } catch {
-    /* fall through to known URL */
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[bondData] failed to fetch documents page:', (err as Error).message);
   }
-  return KNOWN_HISTORICAL_URL;
+  return KNOWN_HISTORICAL_URL_FALLBACK;
 }
 
 async function unzipFirstEntry(zipBuf: Uint8Array): Promise<string> {
