@@ -36,7 +36,27 @@ portfolioRouter.get('/holdings', async (req: AuthenticatedRequest, res, next) =>
       ? rawRange as typeof validRanges[number]
       : undefined;
     const { holdings } = await engine.computeHoldings(req.userId!, range);
-    res.json({ holdings });
+    // Aggregate freshness: pick the *oldest* fetchedAt across all active holdings
+    // so the badge tells the user when the *least fresh* price was retrieved.
+    // Also expose the newest one so the UI can show "last refresh" if it wants.
+    const activeFetched = holdings
+      .filter((h) => h.shares > 0 && h.priceFetchedAt)
+      .map((h) => h.priceFetchedAt!);
+    const oldest = activeFetched.length > 0
+      ? activeFetched.reduce((min, t) => t < min ? t : min)
+      : null;
+    const newest = activeFetched.length > 0
+      ? activeFetched.reduce((max, t) => t > max ? t : max)
+      : null;
+    res.json({
+      holdings,
+      asOf: {
+        // ISO datetime of the most-recently-refreshed price series feeding the
+        // holdings table. The frontend uses this to render the "as of" badge.
+        latestPriceFetchedAt: newest,
+        oldestPriceFetchedAt: oldest,
+      },
+    });
   } catch (err) { next(err); }
 });
 
@@ -281,7 +301,28 @@ portfolioRouter.get('/allocation', async (req: AuthenticatedRequest, res, next) 
 portfolioRouter.get('/yearly-performance', async (req: AuthenticatedRequest, res, next) => {
   try {
     const engine = new PerformanceEngine(getRepository());
-    const result = await engine.yearlyPerformance(req.userId!);
-    res.json({ years: result });
+    const [result, allTime] = await Promise.all([
+      engine.yearlyPerformance(req.userId!),
+      engine.allTimePerformance(req.userId!),
+    ]);
+    res.json({ years: result, allTime });
+  } catch (err) { next(err); }
+});
+
+portfolioRouter.get('/dividends-analytics', async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const engine = new PerformanceEngine(getRepository());
+    const yearRaw = typeof req.query.year === 'string' ? Number(req.query.year) : NaN;
+    const yearFilter = Number.isFinite(yearRaw) && yearRaw > 1900 ? yearRaw : undefined;
+    const result = await engine.dividendAnalytics(req.userId!, yearFilter);
+    res.json(result);
+  } catch (err) { next(err); }
+});
+
+portfolioRouter.get('/realized', async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const engine = new PerformanceEngine(getRepository());
+    const result = await engine.realizedAnalytics(req.userId!);
+    res.json(result);
   } catch (err) { next(err); }
 });

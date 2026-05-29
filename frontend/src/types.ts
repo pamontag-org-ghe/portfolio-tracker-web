@@ -36,6 +36,22 @@ export interface Holding {
   rangeSells?: number;
   /** Dividends paid during the requested range, in EUR. */
   rangeDividends?: number;
+  /** ISO date of the latest price datapoint used to value this holding. */
+  priceAsOf?: string;
+  /** ISO datetime when the price series was last refreshed from the upstream source. */
+  priceFetchedAt?: string;
+  /** ISO date of the latest FX rate used to convert to EUR. */
+  fxAsOf?: string;
+  /** ISO datetime when the FX series was last refreshed. */
+  fxFetchedAt?: string;
+}
+
+export interface HoldingsResponse {
+  holdings: Holding[];
+  asOf: {
+    latestPriceFetchedAt: string | null;
+    oldestPriceFetchedAt: string | null;
+  };
 }
 
 export interface FxRatesResponse {
@@ -145,4 +161,116 @@ export interface YearlyPerformance {
   twr: number;
   mwr: number | null;
   benchmarkTwr: number;
+  /** All-time row only: cumulative (period) TWR before annualisation. */
+  twrCumulative?: number;
+  /** All-time row only: cumulative (period) benchmark TWR. */
+  benchmarkTwrCumulative?: number;
+  /** All-time row only: length of the period in years (e.g. 5.42). */
+  yearsSpan?: number;
+}
+
+export interface YearlyPerformanceResponse {
+  years: YearlyPerformance[];
+  allTime: YearlyPerformance | null;
+}
+
+export interface DividendYearStat {
+  year: number;
+  gross: number;
+  net: number;
+  taxes: number;
+  growthPct: number | null;
+}
+
+export interface DividendMonthStat {
+  month: number;
+  gross: number;
+  net: number;
+  taxes: number;
+}
+
+export interface DividendSecurityStat {
+  securityId: string;
+  name: string;
+  ticker?: string;
+  isin?: string;
+  currency: string;
+  gross: number;
+  net: number;
+  taxes: number;
+  ttmGross: number;
+  cost: number;
+  yieldOnCostTtm: number | null;
+  growthYoY: number | null;
+}
+
+export interface DividendAnalytics {
+  asOf: string;
+  yearFilter: number | null;
+  perYear: DividendYearStat[];
+  perMonth: DividendMonthStat[];
+  perSecurity: DividendSecurityStat[];
+  totals: {
+    gross: number;
+    net: number;
+    ttmGross: number;
+    ttmNet: number;
+    yieldOnCostTtm: number | null;
+    cagr: number | null;
+    coveredCost: number;
+  };
+}
+
+export interface RealizedTrade {
+  transactionId: string;
+  securityId: string;
+  name: string;
+  ticker?: string;
+  isin?: string;
+  currency: string;
+  priceConvention: 'unit' | 'percent';
+  date: string;
+  sharesSold: number;
+  /** Average cost per share for the sold lot (security currency, ×100 for percent bonds). */
+  priceBought: number;
+  priceSold: number;
+  grossEur: number;
+  netEur: number;
+  costBasisEur: number;
+  /** Capital gain only (excludes dividends). */
+  pnlAbsEur: number;
+  pnlPct: number | null;
+  /** Dividends/coupons attributed to the sold shares (EUR). */
+  dividendsEur: number;
+  /** pnlAbsEur + dividendsEur. */
+  pnlWithDividendsEur: number;
+  pnlWithDividendsPct: number | null;
+  positionClosed: boolean;
+}
+
+export interface RealizedYearStat {
+  year: number;
+  grossEur: number;
+  netEur: number;
+  pnlEur: number;
+  dividendsEur: number;
+  pnlWithDividendsEur: number;
+  trades: number;
+}
+
+export interface RealizedAnalytics {
+  asOf: string;
+  trades: RealizedTrade[];
+  perYear: RealizedYearStat[];
+  totals: {
+    grossEur: number;
+    netEur: number;
+    pnlEur: number;
+    dividendsEur: number;
+    pnlWithDividendsEur: number;
+    costBasisEur: number;
+    avgPnlPct: number | null;
+    avgPnlWithDividendsPct: number | null;
+    trades: number;
+  };
 }

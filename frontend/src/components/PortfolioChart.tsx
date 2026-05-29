@@ -101,10 +101,18 @@ export default function PortfolioChart({ series, range }: Props) {
 
   return (
     <div className="card">
-      <div className="flex items-baseline justify-between mb-2">
+      <div className="flex items-baseline justify-between mb-1">
         <h2 className="font-semibold">Portfolio value vs S&amp;P 500</h2>
         <span className="text-xs text-slate-500">{filtered.length} data points</span>
       </div>
+      <p className="text-xs text-slate-500 mb-2">
+        The orange line is a <strong>synthetic S&amp;P 500</strong>: starting from your very first
+        contribution, every buy/sell you made is replayed as if invested in the index. So its
+        absolute € reflects <em>years of prior compounding</em> on those contributions — it can
+        end higher than your portfolio in € even when your portfolio's TWR % for the visible
+        window is higher. The KPI <em>Portfolio (range) %</em> and <em>S&amp;P (range) %</em>{' '}
+        are TWRs over the visible window only (cash-flow-neutral, like-for-like).
+      </p>
       <div className="h-72 sm:h-96">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={filtered} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>

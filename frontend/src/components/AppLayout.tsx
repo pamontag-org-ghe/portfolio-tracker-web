@@ -16,6 +16,8 @@ export default function AppLayout() {
           <nav className="order-3 sm:order-2 w-full sm:w-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <NavLink to="/" end className={({ isActive }) => isActive ? 'text-brand-600 font-medium' : 'text-slate-600 dark:text-slate-300'}>Dashboard</NavLink>
             <NavLink to="/yearly" className={({ isActive }) => isActive ? 'text-brand-600 font-medium' : 'text-slate-600 dark:text-slate-300'}>Yearly</NavLink>
+            <NavLink to="/dividends" className={({ isActive }) => isActive ? 'text-brand-600 font-medium' : 'text-slate-600 dark:text-slate-300'}>Dividends</NavLink>
+            <NavLink to="/realized" className={({ isActive }) => isActive ? 'text-brand-600 font-medium' : 'text-slate-600 dark:text-slate-300'}>Realized</NavLink>
             <NavLink to="/transactions" className={({ isActive }) => isActive ? 'text-brand-600 font-medium' : 'text-slate-600 dark:text-slate-300'}>Transactions</NavLink>
             <NavLink to="/import" className={({ isActive }) => isActive ? 'text-brand-600 font-medium' : 'text-slate-600 dark:text-slate-300'}>Import</NavLink>
           </nav>

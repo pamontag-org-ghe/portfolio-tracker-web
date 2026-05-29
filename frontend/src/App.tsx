@@ -5,6 +5,8 @@ import DashboardPage from './pages/DashboardPage';
 import TransactionsPage from './pages/TransactionsPage';
 import ImportPage from './pages/ImportPage';
 import YearlyPerformancePage from './pages/YearlyPerformancePage';
+import DividendsPage from './pages/DividendsPage';
+import RealizedPage from './pages/RealizedPage';
 import { useAuth } from './auth/AuthContext';
 import AppLayout from './components/AppLayout';
 
@@ -30,6 +32,8 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/yearly" element={<YearlyPerformancePage />} />
+        <Route path="/dividends" element={<DividendsPage />} />
+        <Route path="/realized" element={<RealizedPage />} />
         <Route path="/import" element={<ImportPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -35,6 +35,19 @@ export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
 }
 
+/**
+ * Render an ISO datetime as "MMM dd, yyyy HH:mm" in the user's locale.
+ * Falls back to "—" for falsy / unparseable input. Used for data-freshness badges.
+ */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 export function colorForReturn(value: number, neutralZero = true): string {
   if (neutralZero && value === 0) return 'text-slate-500';
   return value >= 0 ? 'text-emerald-600' : 'text-red-600';

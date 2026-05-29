@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, apiErrorMessage } from '../api/client';
-import type { AllocationResponse, FxRatesResponse, Holding, PerformanceResponse, TimeRange } from '../types';
-import { colorForReturn, formatMoney, formatMoneyDetail, formatNumber, formatPct } from '../utils/format';
+import type { AllocationResponse, FxRatesResponse, Holding, HoldingsResponse, PerformanceResponse, TimeRange } from '../types';
+import { colorForReturn, formatDateTime, formatMoney, formatMoneyDetail, formatNumber, formatPct } from '../utils/format';
 import PortfolioChart from '../components/PortfolioChart';
 import ReturnsHeatmap from '../components/ReturnsHeatmap';
 import AllocationDonut from '../components/AllocationDonut';
@@ -13,6 +13,7 @@ const RANGES: TimeRange[] = ['1D', '1W', '1M', 'YTD', '1Y', '3Y', '5Y', 'ALL'];
 export default function DashboardPage() {
   const [perf, setPerf] = useState<PerformanceResponse | null>(null);
   const [holdings, setHoldings] = useState<Holding[] | null>(null);
+  const [holdingsAsOf, setHoldingsAsOf] = useState<HoldingsResponse['asOf'] | null>(null);
   const [alloc, setAlloc] = useState<AllocationResponse | null>(null);
   const [fx, setFx] = useState<FxRatesResponse | null>(null);
   const [range, setRange] = useState<TimeRange>('ALL');
@@ -25,7 +26,7 @@ export default function DashboardPage() {
     setLoading(true);
     Promise.all([
       api.get<PerformanceResponse>('/portfolio/performance'),
-      api.get<{ holdings: Holding[] }>('/portfolio/holdings'),
+      api.get<HoldingsResponse>('/portfolio/holdings'),
       api.get<AllocationResponse>('/portfolio/allocation'),
       api.get<FxRatesResponse>('/portfolio/fx-rates').catch(() => ({ data: { base: 'EUR', rates: [] } })),
     ])
@@ -33,6 +34,7 @@ export default function DashboardPage() {
         if (!alive) return;
         setPerf(p.data);
         setHoldings(h.data.holdings);
+        setHoldingsAsOf(h.data.asOf);
         setAlloc(a.data);
         setFx(f.data);
       })
@@ -46,8 +48,12 @@ export default function DashboardPage() {
   // load happens in the effect above, this only fires on subsequent changes.
   useEffect(() => {
     let alive = true;
-    api.get<{ holdings: Holding[] }>('/portfolio/holdings', { params: { range } })
-      .then((h) => { if (alive) setHoldings(h.data.holdings); })
+    api.get<HoldingsResponse>('/portfolio/holdings', { params: { range } })
+      .then((h) => {
+        if (!alive) return;
+        setHoldings(h.data.holdings);
+        setHoldingsAsOf(h.data.asOf);
+      })
       .catch(() => { /* keep previous holdings on transient failure */ });
     return () => { alive = false; };
   }, [range]);
@@ -167,7 +173,22 @@ export default function DashboardPage() {
       {/* Holdings — table on desktop, stacked card list on mobile to avoid horizontal scroll. */}
       <div className="card overflow-x-auto">
         <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
-          <h2 className="font-semibold">Open holdings ({activeHoldings.length})</h2>
+          <div className="flex flex-col gap-0.5">
+            <h2 className="font-semibold">Open holdings ({activeHoldings.length})</h2>
+            {/* Data freshness badge: when the most recent / least recent price was fetched. */}
+            {holdingsAsOf?.latestPriceFetchedAt && (
+              <span
+                className="text-xs text-slate-500"
+                title={
+                  holdingsAsOf.oldestPriceFetchedAt && holdingsAsOf.oldestPriceFetchedAt !== holdingsAsOf.latestPriceFetchedAt
+                    ? `Oldest price refresh: ${formatDateTime(holdingsAsOf.oldestPriceFetchedAt)}`
+                    : undefined
+                }
+              >
+                Prices as of <span className="tabular-nums">{formatDateTime(holdingsAsOf.latestPriceFetchedAt)}</span>
+              </span>
+            )}
+          </div>
           <span className="text-xs text-slate-500">Total return incl. realized + dividends: <span className={colorForReturn(totalReturn)}>{formatPct(totalReturn)}</span></span>
         </div>
         {isMobile ? (
@@ -178,8 +199,12 @@ export default function DashboardPage() {
               const showRangePnL = range !== 'ALL' && h.rangePnL !== undefined;
               const pnlValue = showRangePnL ? h.rangePnL : h.unrealizedPnL;
               const pnlPct = showRangePnL ? h.rangePnLPct : h.unrealizedPnLPct;
+              const freshTitle = [
+                h.priceFetchedAt ? `Price fetched ${formatDateTime(h.priceFetchedAt)}${h.priceAsOf ? ` (last quote ${h.priceAsOf})` : ''}` : null,
+                h.fxFetchedAt ? `FX ${h.currency}/EUR fetched ${formatDateTime(h.fxFetchedAt)}` : null,
+              ].filter(Boolean).join(' · ');
               return (
-                <li key={h.securityId} className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm">
+                <li key={h.securityId} className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm" title={freshTitle || undefined}>
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <div className="min-w-0">
                       <div className="font-medium truncate">{h.name}</div>
@@ -240,6 +265,9 @@ export default function DashboardPage() {
               const showRangePnL = range !== 'ALL' && h.rangePnL !== undefined;
               const pnlValue = showRangePnL ? h.rangePnL : h.unrealizedPnL;
               const pnlPct = showRangePnL ? h.rangePnLPct : h.unrealizedPnLPct;
+              const priceTitle = h.priceFetchedAt
+                ? `Price refreshed ${formatDateTime(h.priceFetchedAt)}${h.priceAsOf ? ` · latest quote ${h.priceAsOf}` : ''}`
+                : undefined;
               return (
                 <tr key={h.securityId} className="border-b border-slate-100 dark:border-slate-700/50">
                   <td className="py-1.5 pr-3">
@@ -250,10 +278,17 @@ export default function DashboardPage() {
                   <td className="py-1.5 pr-3"><span className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded px-1.5 py-0.5">{h.instrumentType}</span></td>
                   <td className="py-1.5 pr-3 text-right">{isPct ? formatNumber(h.shares, 0) : h.shares}</td>
                   <td className="py-1.5 pr-3 text-right">{h.averageCost.toFixed(2)} {priceLabel}</td>
-                  <td className="py-1.5 pr-3 text-right">{h.currentPrice !== undefined ? `${h.currentPrice.toFixed(2)} ${priceLabel}` : '—'}</td>
+                  <td className="py-1.5 pr-3 text-right" title={priceTitle}>
+                    {h.currentPrice !== undefined ? `${h.currentPrice.toFixed(2)} ${priceLabel}` : '—'}
+                  </td>
                   <td className="py-1.5 pr-3 text-right">
                     {h.currentValueLocal !== undefined ? (
-                      <span title={h.fxRate ? `FX ${h.currency}/EUR ${h.fxRate.toFixed(4)}` : undefined}>
+                      <span title={
+                        [
+                          h.fxRate ? `FX ${h.currency}/EUR ${h.fxRate.toFixed(4)}` : null,
+                          h.fxFetchedAt ? `FX refreshed ${formatDateTime(h.fxFetchedAt)}` : null,
+                        ].filter(Boolean).join(' · ') || undefined
+                      }>
                         {isPct ? formatMoney(h.currentValueLocal) : localFmt(h.currentValueLocal)}
                       </span>
                     ) : '—'}

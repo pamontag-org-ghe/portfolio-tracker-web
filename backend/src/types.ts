@@ -163,5 +163,19 @@ export interface Holding {
   rangeSells?: number;
   /** Dividends paid during the requested range, in EUR. */
   rangeDividends?: number;
+  /**
+   * ISO date (YYYY-MM-DD) of the latest price datapoint used to value this holding.
+   * Useful to tell the user how fresh the displayed price is.
+   */
+  priceAsOf?: string;
+  /**
+   * Full ISO datetime (with hours/minutes) when the price series was last refreshed
+   * from the upstream market data source (Yahoo / bond archive).
+   */
+  priceFetchedAt?: string;
+  /** ISO date of the latest FX rate used to convert to EUR. */
+  fxAsOf?: string;
+  /** Full ISO datetime when the FX series was last refreshed. */
+  fxFetchedAt?: string;
 }
 
