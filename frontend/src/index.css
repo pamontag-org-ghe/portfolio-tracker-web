@@ -3,6 +3,9 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
+/* Prevent any wide child (charts, tables, badges) from inducing a horizontal
+   scroll on the *page itself* — narrow containers should scroll internally. */
+html, body, #root { overflow-x: hidden; max-width: 100vw; }
 body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
 
 .card { @apply bg-white dark:bg-slate-800 rounded-xl shadow border border-slate-200 dark:border-slate-700 p-4; }
@@ -12,5 +15,5 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
 .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
 .input { @apply w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-brand-500; }
 .label { @apply block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1; }
-.kpi-value { @apply text-2xl font-semibold; }
+.kpi-value { @apply text-lg sm:text-2xl font-semibold break-words; }
 .kpi-label { @apply text-xs uppercase tracking-wide text-slate-500; }

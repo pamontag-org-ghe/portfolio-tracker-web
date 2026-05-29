@@ -1,6 +1,6 @@
-export type AssetCategory = 'Stock' | 'Bond' | 'ETF' | 'MutualFund' | 'Commodities' | 'Other';
-export type AssetClass = 'Stock' | 'Bond' | 'Gold' | 'Other';
-export type InstrumentType = 'Stock' | 'ETF' | 'Bond' | 'MutualFund' | 'Other';
+export type AssetCategory = 'Stock' | 'Bond' | 'ETF' | 'MutualFund' | 'Commodities' | 'Crypto' | 'Other';
+export type AssetClass = 'Stock' | 'Bond' | 'Gold' | 'Crypto' | 'Other';
+export type InstrumentType = 'Stock' | 'ETF' | 'Bond' | 'MutualFund' | 'Crypto' | 'Other';
 export type TimeRange = '1D' | '1W' | '1M' | 'YTD' | '1Y' | '3Y' | '5Y' | 'ALL';
 
 export interface Holding {

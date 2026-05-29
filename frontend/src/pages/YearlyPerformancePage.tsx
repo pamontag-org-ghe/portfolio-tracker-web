@@ -4,12 +4,14 @@ import {
 } from 'recharts';
 import { api, apiErrorMessage } from '../api/client';
 import type { YearlyPerformance } from '../types';
-import { colorForReturn, formatMoney, formatMoneyDetail, formatPct } from '../utils/format';
+import { colorForReturn, formatMoney, formatMoneyCompact, formatPct } from '../utils/format';
+import { useIsMobile } from '../utils/useIsMobile';
 
 export default function YearlyPerformancePage() {
   const [years, setYears] = useState<YearlyPerformance[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     setLoading(true);
@@ -50,7 +52,7 @@ export default function YearlyPerformancePage() {
             <ComposedChart data={chartData} margin={{ top: 10, right: 20, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="year" tick={{ fontSize: 12 }} />
-              <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(v) => formatMoney(v)} width={75} />
+              <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={(v) => formatMoneyCompact(v)} width={75} />
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v.toFixed(0)}%`} width={45} />
               <Tooltip
                 formatter={(value: number, name: string) => {
@@ -71,6 +73,48 @@ export default function YearlyPerformancePage() {
 
       <div className="card overflow-x-auto">
         <h2 className="font-semibold mb-2">Per-year detail</h2>
+        {isMobile ? (
+          <ul className="space-y-3">
+            {[...years].reverse().map((y) => (
+              <li key={y.year} className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm">
+                <div className="flex items-baseline justify-between mb-2">
+                  <span className="font-semibold text-base">{y.year}</span>
+                  <span className={`tabular-nums font-semibold ${colorForReturn(y.twr)}`}>{formatPct(y.twr)} TWR</span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+                  <div>Start</div><div className="text-right tabular-nums">{formatMoney(y.startValue)}</div>
+                  <div>End</div><div className="text-right tabular-nums">{formatMoney(y.endValue)}</div>
+                  <div>Growth</div>
+                  <div className={`text-right tabular-nums ${colorForReturn(y.valueChange)}`}>{formatMoney(y.valueChange)}</div>
+                  <div>Invested</div><div className="text-right tabular-nums">{formatMoney(y.invested)}</div>
+                  <div>Div. gross</div><div className="text-right tabular-nums">{formatMoney(y.dividendsGross)}</div>
+                  <div>Div. net</div><div className="text-right tabular-nums">{formatMoney(y.dividendsNet)}</div>
+                  <div>Taxes</div>
+                  <div className="text-right tabular-nums text-red-600" title={`Dividend tax ${formatMoney(y.dividendsTaxes)} + cap gains ${formatMoney(y.capitalGainsTaxes)}`}>
+                    {y.taxesPaid > 0 ? formatMoney(y.taxesPaid) : '—'}
+                  </div>
+                  <div>Tx costs</div>
+                  <div className="text-right tabular-nums text-slate-500">{y.transactionCosts > 0 ? formatMoney(y.transactionCosts) : '—'}</div>
+                  <div>Gross yield</div>
+                  <div className={`text-right tabular-nums ${colorForReturn(y.grossYield)}`}>{formatPct(y.grossYield)}</div>
+                  <div>Net yield</div>
+                  <div className={`text-right tabular-nums ${colorForReturn(y.netYield)}`}>{formatPct(y.netYield)}</div>
+                  <div>MWR</div>
+                  <div className={`text-right tabular-nums ${y.mwr !== null ? colorForReturn(y.mwr) : ''}`}>
+                    {y.mwr !== null ? formatPct(y.mwr) : '—'}
+                  </div>
+                  <div>S&amp;P TWR</div>
+                  <div
+                    className={`text-right tabular-nums ${y.benchmarkTwr === y.twr ? 'text-slate-500' : y.benchmarkTwr < y.twr ? 'text-emerald-600' : 'text-red-600'}`}
+                    title={`vs portfolio TWR ${formatPct(y.twr)} — ${y.benchmarkTwr < y.twr ? 'you beat the index' : y.benchmarkTwr > y.twr ? 'index beat you' : 'tied'}`}
+                  >
+                    {formatPct(y.benchmarkTwr)}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
         <table className="min-w-full text-sm">
           <thead>
             <tr className="text-slate-500 border-b border-slate-200 dark:border-slate-700">
@@ -94,8 +138,8 @@ export default function YearlyPerformancePage() {
             {[...years].reverse().map((y) => (
               <tr key={y.year} className="border-b border-slate-100 dark:border-slate-700/50">
                 <td className="py-1.5 pr-3 font-semibold">{y.year}</td>
-                <td className="py-1.5 pr-3 text-right">{formatMoneyDetail(y.startValue)}</td>
-                <td className="py-1.5 pr-3 text-right">{formatMoneyDetail(y.endValue)}</td>
+                <td className="py-1.5 pr-3 text-right">{formatMoney(y.startValue)}</td>
+                <td className="py-1.5 pr-3 text-right">{formatMoney(y.endValue)}</td>
                 <td className={`py-1.5 pr-3 text-right ${colorForReturn(y.valueChange)}`}>{formatMoney(y.valueChange)}</td>
                 <td className="py-1.5 pr-3 text-right">{formatMoney(y.invested)}</td>
                 <td className="py-1.5 pr-3 text-right">{formatMoney(y.dividendsGross)}</td>
@@ -112,11 +156,14 @@ export default function YearlyPerformancePage() {
                 <td className={`py-1.5 pr-3 text-right ${y.mwr !== null ? colorForReturn(y.mwr) : ''}`}>
                   {y.mwr !== null ? formatPct(y.mwr) : '—'}
                 </td>
-                <td className={`py-1.5 pr-3 text-right ${colorForReturn(y.benchmarkTwr)}`}>{formatPct(y.benchmarkTwr)}</td>
+                <td className={`py-1.5 pr-3 text-right ${y.benchmarkTwr === y.twr ? 'text-slate-500' : y.benchmarkTwr < y.twr ? 'text-emerald-600' : 'text-red-600'}`} title={`vs portfolio TWR ${formatPct(y.twr)} — ${y.benchmarkTwr < y.twr ? 'you beat the index' : y.benchmarkTwr > y.twr ? 'index beat you' : 'tied'}`}>
+                  {formatPct(y.benchmarkTwr)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        )}
         <p className="text-xs text-slate-500 mt-3">
           <strong>Gross yield</strong> = return before taxes (includes the tax already paid back in).
           <strong className="ml-2">Net yield</strong> = what you actually keep after dividend withholding and capital-gains tax.

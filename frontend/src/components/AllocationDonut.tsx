@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, Sector } from 'recharts';
 import { formatMoney } from '../utils/format';
+import { useIsMobile } from '../utils/useIsMobile';
 
 interface Props {
   title: string;
@@ -43,6 +44,7 @@ const renderActiveShape = (props: unknown) => {
 
 export default function AllocationDonut({ title, data, maxSlices = 0, showLabels = true, hideLegend = false }: Props) {
   const [activeIndex, setActiveIndex] = useState<number | undefined>(undefined);
+  const isMobile = useIsMobile();
 
   const entries = Object.entries(data)
     .filter(([, v]) => v > 0)
@@ -101,15 +103,18 @@ export default function AllocationDonut({ title, data, maxSlices = 0, showLabels
               isAnimationActive={false}
               activeIndex={activeIndex}
               activeShape={renderActiveShape}
-              onMouseEnter={(_, idx) => setActiveIndex(idx)}
-              onMouseLeave={() => setActiveIndex(undefined)}
+              onMouseEnter={isMobile ? undefined : (_, idx) => setActiveIndex(idx)}
+              onMouseLeave={isMobile ? undefined : () => setActiveIndex(undefined)}
+              onClick={isMobile ? (_, idx) => setActiveIndex((current) => current === idx ? undefined : idx) : undefined}
             >
               {items.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
             </Pie>
-            <Tooltip
-              formatter={(v: number, name) => [`${formatMoney(v)} (${total ? ((v / total) * 100).toFixed(1) : '0'}%)`, name]}
-              wrapperStyle={{ outline: 'none' }}
-            />
+            {!isMobile && (
+              <Tooltip
+                formatter={(v: number, name) => [`${formatMoney(v)} (${total ? ((v / total) * 100).toFixed(1) : '0'}%)`, name]}
+                wrapperStyle={{ outline: 'none' }}
+              />
+            )}
             {!hideLegend && <Legend wrapperStyle={{ fontSize: 12 }} />}
           </PieChart>
         </ResponsiveContainer>

@@ -265,3 +265,76 @@ export class BondDataService {
     }
   }
 }
+
+// ---- Bond list (reference / metadata) ----
+
+interface BondMeta {
+  isin: string;
+  description: string;
+  currency: string;
+  market: string;
+  redemptionDate?: string;
+}
+
+let bondListCache: { loadedAt: number; byIsin: Map<string, BondMeta> } | null = null;
+let bondListPending: Promise<Map<string, BondMeta>> | null = null;
+
+async function loadBondList(): Promise<Map<string, BondMeta>> {
+  const out = new Map<string, BondMeta>();
+  const candidates = [
+    path.resolve(config.dataDir, 'bonds_list.csv'),
+    path.resolve('./data/bonds_list.csv'),
+  ];
+  let csv: string | null = null;
+  for (const p of candidates) {
+    try {
+      const stat = await fs.stat(p);
+      if (stat.isFile()) {
+        csv = await fs.readFile(p, 'utf8');
+        break;
+      }
+    } catch { /* try next */ }
+  }
+  if (!csv) return out;
+  const lines = csv.split(/\r?\n/);
+  if (lines.length < 2) return out;
+  const header = lines[0].split(';').map((s) => s.trim().toLowerCase());
+  const isinIdx = header.indexOf('isincode');
+  const descIdx = header.indexOf('description');
+  const curIdx = header.indexOf('currencycode');
+  const mktIdx = header.indexOf('marketcode');
+  const redIdx = header.indexOf('redemptiondate');
+  if (isinIdx < 0) return out;
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(';');
+    const isin = cells[isinIdx]?.trim();
+    if (!isin) continue;
+    out.set(isin.toUpperCase(), {
+      isin: isin.toUpperCase(),
+      description: cells[descIdx]?.trim() ?? '',
+      currency: cells[curIdx]?.trim() ?? 'EUR',
+      market: cells[mktIdx]?.trim() ?? '',
+      redemptionDate: redIdx >= 0 ? cells[redIdx]?.trim() : undefined,
+    });
+  }
+  return out;
+}
+
+/** Look up bond metadata for an ISIN in the cached reference list. Returns null if unknown. */
+export async function lookupBondByIsin(isin: string): Promise<BondMeta | null> {
+  if (!isin) return null;
+  const key = isin.trim().toUpperCase();
+  if (bondListCache && Date.now() - bondListCache.loadedAt < 24 * 3_600_000) {
+    return bondListCache.byIsin.get(key) ?? null;
+  }
+  if (!bondListPending) {
+    bondListPending = loadBondList()
+      .then((map) => {
+        bondListCache = { loadedAt: Date.now(), byIsin: map };
+        return map;
+      })
+      .finally(() => { bondListPending = null; });
+  }
+  const map = await bondListPending;
+  return map.get(key) ?? null;
+}

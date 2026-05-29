@@ -59,6 +59,10 @@ resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     // Disable key-based auth. The backend authenticates via the App Service's
     // system-assigned managed identity using the data-plane RBAC role assigned below.
     disableLocalAuth: true
+    // Block ALL public traffic. The only way to reach the data plane is via the
+    // private endpoint defined further down, resolved through the Private DNS Zone
+    // linked to the integrated VNet.
+    publicNetworkAccess: 'Disabled'
   }
 }
 
@@ -88,6 +92,114 @@ resource cosmosContainers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/co
     }
   }
 }]
+
+// ---- Virtual Network for private connectivity ----
+// We put the backend on a VNet and reach Cosmos DB through a private endpoint, so
+// data-plane traffic never traverses the public internet. Two subnets:
+//
+//   * app-subnet — delegated to Microsoft.Web/serverFarms for App Service regional
+//                  VNet integration. The web app's outbound traffic enters here.
+//   * pe-subnet  — hosts the Cosmos DB private endpoint NIC. Network policies are
+//                  disabled because private endpoints don't support NSG/UDR rules
+//                  on their own NIC.
+//
+// Address space is in 10.20.0.0/16 to avoid clashing with the very common
+// 10.0.0.0/16 default that's often used by other corporate VNets.
+var vnetName = '${baseName}-vnet'
+var appSubnetName = 'app-subnet'
+var peSubnetName = 'pe-subnet'
+
+resource vnet 'Microsoft.Network/virtualNetworks@2024-01-01' = {
+  name: vnetName
+  location: location
+  properties: {
+    addressSpace: { addressPrefixes: [ '10.20.0.0/16' ] }
+    subnets: [
+      {
+        name: appSubnetName
+        properties: {
+          addressPrefix: '10.20.1.0/24'
+          delegations: [
+            {
+              name: 'webapp'
+              properties: { serviceName: 'Microsoft.Web/serverFarms' }
+            }
+          ]
+        }
+      }
+      {
+        name: peSubnetName
+        properties: {
+          addressPrefix: '10.20.2.0/24'
+          privateEndpointNetworkPolicies: 'Disabled'
+        }
+      }
+    ]
+  }
+}
+
+resource appSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-01-01' existing = {
+  parent: vnet
+  name: appSubnetName
+}
+
+resource peSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-01-01' existing = {
+  parent: vnet
+  name: peSubnetName
+}
+
+// ---- Private DNS Zone for Cosmos DB SQL API ----
+// Required so the backend resolves <account>.documents.azure.com to the private IP
+// allocated to the private endpoint, instead of the public Cosmos load balancer.
+// The zone name is fixed by Azure — must be exactly 'privatelink.documents.azure.com'.
+resource cosmosDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name: 'privatelink.documents.azure.com'
+  location: 'global'
+}
+
+resource cosmosDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent: cosmosDnsZone
+  name: '${vnetName}-link'
+  location: 'global'
+  properties: {
+    virtualNetwork: { id: vnet.id }
+    registrationEnabled: false
+  }
+}
+
+// ---- Private Endpoint for Cosmos DB (SQL/NoSQL API) ----
+// groupIds=['Sql'] targets the NoSQL data plane. The DNS zone group below auto-
+// populates the linked Private DNS Zone with the right A records (one per Cosmos
+// region — for a single-region account that's just the primary endpoint).
+resource cosmosPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
+  name: '${cosmosAccountName}-pe'
+  location: location
+  properties: {
+    subnet: { id: peSubnet.id }
+    privateLinkServiceConnections: [
+      {
+        name: 'cosmos-plsc'
+        properties: {
+          privateLinkServiceId: cosmos.id
+          groupIds: [ 'Sql' ]
+        }
+      }
+    ]
+  }
+}
+
+resource cosmosPrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-01-01' = {
+  parent: cosmosPrivateEndpoint
+  name: 'default'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'cosmos'
+        properties: { privateDnsZoneId: cosmosDnsZone.id }
+      }
+    ]
+  }
+}
 
 // ---- Log Analytics workspace + Application Insights ----
 // All backend traces (console logs, requests, exceptions) flow into this AI
@@ -155,6 +267,11 @@ resource api 'Microsoft.Web/sites@2024-04-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
+    // ---- Regional VNet integration ----
+    // The web app's outbound traffic enters app-subnet (delegated above) so it can
+    // reach the Cosmos DB private endpoint in pe-subnet. Basic (B1) plans support
+    // regional VNet integration since 2022, so no SKU upgrade is required.
+    virtualNetworkSubnetId: appSubnet.id
     siteConfig: {
       linuxFxVersion: 'DOCKER|${imageReference}'
       // Pull image via managed identity (AcrPull role granted below) — no docker registry password needed.
@@ -162,6 +279,12 @@ resource api 'Microsoft.Web/sites@2024-04-01' = {
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       alwaysOn: true
+      // Route ALL outbound traffic through the integrated VNet. This ensures DNS
+      // queries for *.documents.azure.com resolve via Azure DNS (168.63.129.16),
+      // which consults the Private DNS Zone linked to the VNet and returns the
+      // private endpoint IP. Public endpoints (Yahoo Finance, Stooq, etc.) still
+      // work via Azure's implicit outbound NAT from the integrated subnet.
+      vnetRouteAllEnabled: true
       appSettings: [
         { name: 'WEBSITES_PORT', value: '4000' }
         { name: 'WEBSITES_ENABLE_APP_SERVICE_STORAGE', value: 'false' }
@@ -176,6 +299,11 @@ resource api 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'COSMOS_DATABASE', value: cosmosDatabaseName }
         { name: 'JWT_SECRET', value: jwtSecret }
         { name: 'CORS_ORIGINS', value: corsOrigins }
+        // Force the worker to use Azure-provided DNS via the integrated VNet so
+        // Private DNS Zone records (privatelink.documents.azure.com) resolve.
+        // Belt-and-braces with vnetRouteAllEnabled above; the explicit setting
+        // protects against the platform default ever flipping back to public DNS.
+        { name: 'WEBSITE_DNS_SERVER', value: '168.63.129.16' }
         // Application Insights wiring. The backend reads
         // APPLICATIONINSIGHTS_CONNECTION_STRING in src/telemetry.ts and starts
         // the SDK when present. The XDT_MicrosoftApplicationInsights_NodeJS=0
@@ -188,6 +316,11 @@ resource api 'Microsoft.Web/sites@2024-04-01' = {
       ]
     }
   }
+  // Make sure the private endpoint + DNS plumbing are fully provisioned before the
+  // app starts and tries to open a Cosmos connection on cold-start.
+  dependsOn: [
+    cosmosPrivateDnsZoneGroup
+  ]
 }
 
 // Grant the App Service managed identity AcrPull on the registry.
@@ -236,4 +369,6 @@ output containerRegistry string = acr.properties.loginServer
 output acrName string = acr.name
 output appInsightsName string = appInsights.name
 output logAnalyticsName string = logAnalytics.name
+output vnetName string = vnet.name
+output cosmosPrivateEndpointName string = cosmosPrivateEndpoint.name
 

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { PerformancePoint } from '../types';
+import { useIsMobile } from '../utils/useIsMobile';
 
 interface Props {
   series: PerformancePoint[];
@@ -12,6 +13,7 @@ interface MonthCell { year: number; month: number; ret: number | null }
  * Rows = years (most recent first), columns = Jan-Dec.
  */
 export default function ReturnsHeatmap({ series }: Props) {
+  const isMobile = useIsMobile();
   const rows = useMemo<MonthCell[][]>(() => {
     if (series.length < 2) return [];
     // Build a map of monthly TWR using portfolioTwrIndex endpoints.
@@ -83,10 +85,18 @@ export default function ReturnsHeatmap({ series }: Props) {
   }
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // On mobile we shrink cells aggressively and abbreviate month names to a
+  // single letter so the 12-month grid fits the viewport without a horizontal
+  // scrollbar overflowing the page.
+  const monthLabels = isMobile ? months.map((m) => m[0]) : months;
+  const cellMinWidth = isMobile ? 22 : 44;
+  const yearCellMinWidth = isMobile ? 32 : 56;
+  const cellPadding = isMobile ? '4px 2px' : '6px 4px';
+  const yearCellPadding = isMobile ? '4px 3px' : '6px 6px';
 
   return (
     <div className="card overflow-x-auto">
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="flex items-baseline justify-between mb-3 gap-2 flex-wrap">
         <h2 className="font-semibold">Monthly returns</h2>
         <div className="flex items-center gap-1 text-xs text-slate-500">
           <span>Worse</span>
@@ -98,14 +108,14 @@ export default function ReturnsHeatmap({ series }: Props) {
           <span>Better</span>
         </div>
       </div>
-      <table className="border-separate border-spacing-1 text-xs sm:text-sm">
+      <table className="border-separate border-spacing-1 text-[10px] sm:text-sm w-full">
         <thead>
           <tr>
-            <th className="w-12 text-slate-500 font-medium"></th>
-            {months.map((m) => (
-              <th key={m} className="px-1 py-1 text-slate-500 font-medium text-center">{m}</th>
+            <th className="w-8 sm:w-12 text-slate-500 font-medium"></th>
+            {monthLabels.map((m, i) => (
+              <th key={i} className="px-0.5 sm:px-1 py-1 text-slate-500 font-medium text-center">{m}</th>
             ))}
-            <th className="px-2 py-1 text-slate-500 font-medium text-center">Year</th>
+            <th className="px-1 sm:px-2 py-1 text-slate-500 font-medium text-center">Year</th>
           </tr>
         </thead>
         <tbody>
@@ -115,7 +125,7 @@ export default function ReturnsHeatmap({ series }: Props) {
             const yearReturn = row.some((c) => c.ret !== null) ? yearProduct - 1 : null;
             return (
               <tr key={row[0].year}>
-                <td className="px-2 py-1 text-right font-semibold text-slate-600">{row[0].year}</td>
+                <td className="px-1 sm:px-2 py-1 text-right font-semibold text-slate-600">{row[0].year}</td>
                 {row.map((cell) => (
                   <td
                     key={cell.month}
@@ -123,12 +133,12 @@ export default function ReturnsHeatmap({ series }: Props) {
                     style={{
                       background: colorFor(cell.ret),
                       color: textColorFor(cell.ret),
-                      minWidth: 44,
-                      padding: '6px 4px',
+                      minWidth: cellMinWidth,
+                      padding: cellPadding,
                     }}
                     title={cell.ret === null ? 'no data' : `${cell.year}-${String(cell.month).padStart(2,'0')}: ${(cell.ret * 100).toFixed(2)}%`}
                   >
-                    {cell.ret === null ? '—' : `${(cell.ret * 100).toFixed(1)}%`}
+                    {cell.ret === null ? '—' : isMobile ? `${(cell.ret * 100).toFixed(0)}` : `${(cell.ret * 100).toFixed(1)}%`}
                   </td>
                 ))}
                 <td
@@ -136,8 +146,8 @@ export default function ReturnsHeatmap({ series }: Props) {
                   style={{
                     background: colorFor(yearReturn),
                     color: textColorFor(yearReturn),
-                    minWidth: 56,
-                    padding: '6px 6px',
+                    minWidth: yearCellMinWidth,
+                    padding: yearCellPadding,
                   }}
                 >
                   {yearReturn === null ? '—' : `${(yearReturn * 100).toFixed(1)}%`}

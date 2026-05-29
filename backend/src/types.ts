@@ -2,21 +2,22 @@
 
 export type Currency = 'EUR' | 'USD' | string;
 
-export type AssetCategory = 'Stock' | 'Bond' | 'ETF' | 'MutualFund' | 'Commodities' | 'Other';
+export type AssetCategory = 'Stock' | 'Bond' | 'ETF' | 'MutualFund' | 'Commodities' | 'Crypto' | 'Other';
 
 /**
  * What the underlying asset *is*. Orthogonal to how it's held.
  *   - Stock: equity exposure (single name or basket)
  *   - Bond:  fixed income exposure (single issuance or basket)
  *   - Gold:  precious metal / commodity exposure
+ *   - Crypto: cryptocurrency exposure
  *   - Other: cash, mixed, money market, etc.
  */
-export type AssetClass = 'Stock' | 'Bond' | 'Gold' | 'Other';
+export type AssetClass = 'Stock' | 'Bond' | 'Gold' | 'Crypto' | 'Other';
 
 /**
  * How the asset is held — the *wrapper*. A gold ETC has assetClass='Gold' but instrumentType='ETF'.
  */
-export type InstrumentType = 'Stock' | 'ETF' | 'Bond' | 'MutualFund' | 'Other';
+export type InstrumentType = 'Stock' | 'ETF' | 'Bond' | 'MutualFund' | 'Crypto' | 'Other';
 
 export interface User {
   id: string;
@@ -53,7 +54,9 @@ export function deriveAssetClass(sec: Pick<Security, 'assetClass' | 'category' |
   if (sec.assetClass) return sec.assetClass;
   if (sec.category === 'Bond') return 'Bond';
   if (sec.category === 'Commodities') return 'Gold';
+  if (sec.category === 'Crypto') return 'Crypto';
   const lname = (sec.name ?? '').toLowerCase();
+  if (/(bitcoin|ethereum|crypto|\bbtc\b|\beth\b|solana|cardano|dogecoin)/.test(lname)) return 'Crypto';
   if (/(gold|oro|bullion|silver|argento)/.test(lname)) return 'Gold';
   if (/(bond|obblig|treasury|aggregate|govern|corporate|cedola|euro corp)/.test(lname)) return 'Bond';
   if (sec.category === 'Stock' || sec.category === 'ETF' || sec.category === 'MutualFund') return 'Stock';
@@ -67,6 +70,7 @@ export function deriveInstrumentType(sec: Pick<Security, 'instrumentType' | 'cat
   if (sec.category === 'MutualFund') return 'MutualFund';
   if (sec.category === 'Stock') return 'Stock';
   if (sec.category === 'Commodities') return 'ETF';
+  if (sec.category === 'Crypto') return 'Crypto';
   return 'Other';
 }
 

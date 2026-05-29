@@ -91,7 +91,7 @@ const txSchema = z.object({
   ticker: z.string().optional(),
   isin: z.string().optional(),
   name: z.string().min(1),
-  category: z.enum(['Stock', 'Bond', 'ETF', 'MutualFund', 'Commodities', 'Other']).default('Other'),
+  category: z.enum(['Stock', 'Bond', 'ETF', 'MutualFund', 'Commodities', 'Crypto', 'Other']).default('Other'),
   currency: z.string().default('EUR'),
   type: z.enum(['BUY', 'SELL']),
   shares: z.number().positive(),
@@ -198,6 +198,66 @@ portfolioRouter.delete('/transactions/:id', async (req: AuthenticatedRequest, re
     const repo = getRepository();
     const ok = await repo.transactions.delete(req.userId!, req.params.id);
     if (!ok) throw new HttpError(404, 'Transaction not found');
+    res.status(204).end();
+  } catch (err) { next(err); }
+});
+
+const dividendSchema = z.object({
+  securityId: z.string().optional(),
+  ticker: z.string().optional(),
+  isin: z.string().optional(),
+  name: z.string().min(1),
+  category: z.enum(['Stock', 'Bond', 'ETF', 'MutualFund', 'Commodities', 'Crypto', 'Other']).default('Other'),
+  currency: z.string().default('EUR'),
+  amount: z.number().positive(),
+  taxes: z.number().nonnegative().default(0),
+  date: z.string().min(10),
+  notes: z.string().optional(),
+});
+
+portfolioRouter.post('/dividends', async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const body = dividendSchema.parse(req.body);
+    const repo = getRepository();
+    const sec = await resolveOrCreateSecurity({
+      securityId: body.securityId,
+      ticker: body.ticker,
+      isin: body.isin,
+      name: body.name,
+      category: body.category,
+      currency: body.currency,
+      // Unused by resolveOrCreateSecurity but required by the txSchema shape.
+      type: 'BUY',
+      shares: 1,
+      grossAmount: 1,
+      exchangeRate: 1,
+      fees: 0,
+      taxes: 0,
+      date: body.date,
+    });
+    const date = toIsoDate(body.date);
+    const id = deterministicId('DV', req.userId!, sec.id, date, body.amount, body.taxes);
+    const dividend = {
+      id,
+      userId: req.userId!,
+      securityId: sec.id,
+      securityName: sec.name,
+      category: sec.category,
+      amount: body.amount,
+      taxes: body.taxes,
+      date,
+      notes: body.notes,
+    };
+    await repo.dividends.upsert(dividend);
+    res.status(201).json(dividend);
+  } catch (err) { next(err); }
+});
+
+portfolioRouter.delete('/dividends/:id', async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const repo = getRepository();
+    const ok = await repo.dividends.delete(req.userId!, req.params.id);
+    if (!ok) throw new HttpError(404, 'Dividend not found');
     res.status(204).end();
   } catch (err) { next(err); }
 });

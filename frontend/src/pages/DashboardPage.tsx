@@ -6,6 +6,7 @@ import PortfolioChart from '../components/PortfolioChart';
 import ReturnsHeatmap from '../components/ReturnsHeatmap';
 import AllocationDonut from '../components/AllocationDonut';
 import { Link } from 'react-router-dom';
+import { useIsMobile } from '../utils/useIsMobile';
 
 const RANGES: TimeRange[] = ['1D', '1W', '1M', 'YTD', '1Y', '3Y', '5Y', 'ALL'];
 
@@ -17,6 +18,7 @@ export default function DashboardPage() {
   const [range, setRange] = useState<TimeRange>('ALL');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     let alive = true;
@@ -81,8 +83,8 @@ export default function DashboardPage() {
         <div className="card">
           <div className="kpi-label">Unrealized P/L</div>
           <div className={`kpi-value ${colorForReturn(perf.unrealizedPnL)}`}>
-            {formatMoneyDetail(perf.unrealizedPnL)}
-            <span className="text-sm ml-2">{formatPct(perf.unrealizedPnLPct)}</span>
+            <span>{formatMoneyDetail(perf.unrealizedPnL)}</span>
+            <span className="text-xs sm:text-sm ml-2 inline-block">{formatPct(perf.unrealizedPnLPct)}</span>
           </div>
         </div>
         <div className="card">
@@ -90,7 +92,7 @@ export default function DashboardPage() {
           <div className={`kpi-value ${colorForReturn(perf.realizedPnL + perf.dividendsTotal)}`}>
             {formatMoneyDetail(perf.realizedPnL + perf.dividendsTotal)}
           </div>
-          <div className="text-xs text-slate-500 mt-1">
+          <div className="text-xs text-slate-500 mt-1 break-words">
             Realized {formatMoneyDetail(perf.realizedPnL)} · Dividends {formatMoneyDetail(perf.dividendsTotal)}
           </div>
         </div>
@@ -162,12 +164,52 @@ export default function DashboardPage() {
 
       <ReturnsHeatmap series={perf.series} />
 
-      {/* Holdings table */}
+      {/* Holdings — table on desktop, stacked card list on mobile to avoid horizontal scroll. */}
       <div className="card overflow-x-auto">
-        <div className="flex items-baseline justify-between mb-2">
+        <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
           <h2 className="font-semibold">Open holdings ({activeHoldings.length})</h2>
           <span className="text-xs text-slate-500">Total return incl. realized + dividends: <span className={colorForReturn(totalReturn)}>{formatPct(totalReturn)}</span></span>
         </div>
+        {isMobile ? (
+          <ul className="space-y-3">
+            {activeHoldings.map((h) => {
+              const isPct = (h.priceConvention ?? (h.category === 'Bond' ? 'percent' : 'unit')) === 'percent';
+              const priceLabel = isPct ? '%' : h.currency;
+              const showRangePnL = range !== 'ALL' && h.rangePnL !== undefined;
+              const pnlValue = showRangePnL ? h.rangePnL : h.unrealizedPnL;
+              const pnlPct = showRangePnL ? h.rangePnLPct : h.unrealizedPnLPct;
+              return (
+                <li key={h.securityId} className="border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{h.name}</div>
+                      <div className="text-xs text-slate-500 truncate">{h.ticker ?? h.isin ?? ''}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-semibold tabular-nums">{h.currentValue !== undefined ? formatMoney(h.currentValue) : '—'}</div>
+                      <div className={`text-xs tabular-nums ${colorForReturn(pnlValue ?? 0)}`}>
+                        {pnlValue !== undefined ? `${formatMoney(pnlValue)}${pnlPct !== undefined ? ` (${formatPct(pnlPct)})` : ''}` : '—'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 text-xs text-slate-500">
+                    <div>
+                      <span className="inline-block bg-slate-100 dark:bg-slate-700 rounded px-1.5 py-0.5 mr-1">{h.assetClass}</span>
+                      <span className="inline-block bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded px-1.5 py-0.5">{h.instrumentType}</span>
+                    </div>
+                    <div className="text-right">
+                      {range === 'ALL' ? 'P/L' : `P/L (${range})`}
+                    </div>
+                    <div>Shares: {isPct ? formatNumber(h.shares, 0) : h.shares}</div>
+                    <div className="text-right">Avg {h.averageCost.toFixed(2)} {priceLabel}</div>
+                    <div>Price: {h.currentPrice !== undefined ? `${h.currentPrice.toFixed(2)} ${priceLabel}` : '—'}</div>
+                    <div className="text-right">Div {formatMoney(h.dividendsTotal)}</div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
         <table className="min-w-full text-sm">
           <thead>
             <tr className="text-left text-slate-500 border-b border-slate-200 dark:border-slate-700">
@@ -190,7 +232,7 @@ export default function DashboardPage() {
               const isPct = (h.priceConvention ?? (h.category === 'Bond' ? 'percent' : 'unit')) === 'percent';
               const priceLabel = isPct ? '%' : h.currency;
               const localFmt = (v: number) => new Intl.NumberFormat('en-US', {
-                style: 'currency', currency: isPct ? 'EUR' : h.currency, maximumFractionDigits: 0,
+                style: 'currency', currency: isPct ? 'EUR' : h.currency, minimumFractionDigits: 2, maximumFractionDigits: 2,
               }).format(v);
               // When a non-ALL range is selected and the backend returned a range P/L,
               // show that instead of the lifetime unrealized P/L so the column matches
@@ -233,6 +275,7 @@ export default function DashboardPage() {
             })}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   );

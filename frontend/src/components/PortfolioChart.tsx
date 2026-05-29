@@ -4,7 +4,7 @@ import {
   type TooltipProps,
 } from 'recharts';
 import type { PerformancePoint, TimeRange } from '../types';
-import { colorForReturn, formatMoney, formatPct } from '../utils/format';
+import { colorForReturn, formatMoney, formatMoneyCompact, formatPct } from '../utils/format';
 
 interface Props {
   series: PerformancePoint[];
@@ -118,7 +118,7 @@ export default function PortfolioChart({ series, range }: Props) {
             <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={40} />
             <YAxis
               tick={{ fontSize: 11 }}
-              tickFormatter={(v) => formatMoney(v)}
+              tickFormatter={(v) => formatMoneyCompact(v)}
               width={78}
               domain={yDomain}
               allowDataOverflow={false}

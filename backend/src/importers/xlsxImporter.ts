@@ -17,6 +17,7 @@ export interface ImportSummary {
 // Map xlsx "Class"/"Tipo"/"Classe" values to our AssetCategory.
 function mapCategory(...values: (string | undefined | null)[]): AssetCategory {
   const v = values.filter(Boolean).map((s) => String(s).toLowerCase()).join(' ');
+  if (v.includes('crypto') || v.includes('bitcoin') || /\bbtc\b/.test(v) || /\beth\b/.test(v)) return 'Crypto';
   if (v.includes('etf')) return 'ETF';
   if (v.includes('obblig') || v.includes('bond') || /\bo\b/.test(v)) return 'Bond';
   if (v.includes('oro') || v.includes('gold') || v.includes('commod')) return 'Commodities';
@@ -133,9 +134,12 @@ function classifyFromHints(category: AssetCategory, classValue: string | undefin
   else if (cls === 'o' || category === 'Bond') instrumentType = 'Bond';
   else if (cls === 'etf' || category === 'ETF' || category === 'Commodities') instrumentType = 'ETF';
   else if (category === 'MutualFund') instrumentType = 'MutualFund';
+  else if (category === 'Crypto' || /(bitcoin|ethereum|crypto|\bbtc\b|\beth\b)/i.test(lname)) instrumentType = 'Crypto';
 
   if (/(gold|oro|bullion|silver|argento|platinum)/.test(lname) || category === 'Commodities') {
     assetClass = 'Gold';
+  } else if (category === 'Crypto' || instrumentType === 'Crypto') {
+    assetClass = 'Crypto';
   } else if (
     /(bond|obblig|treasury|aggregate|govern|corporate|bund|btp|gilt|oat|cedola|euro corp|sovereign)/i.test(lname) ||
     instrumentType === 'Bond'
